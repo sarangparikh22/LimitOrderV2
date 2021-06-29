@@ -21,6 +21,8 @@ contract SushiSwapLimitOrderReceiver is ILimitOrderReceiver {
     uint256 public immutable deploymentChainId;
     IBentoBoxV1 private immutable bentoBox;
 
+    mapping(address => uint256) public nonces;
+
     constructor (IBentoBoxV1 _bentoBox) public {
         uint256 chainId;
         assembly {
@@ -62,6 +64,7 @@ contract SushiSwapLimitOrderReceiver is ILimitOrderReceiver {
 
         ) = abi.decode(data, (IERC20, IERC20, address, uint256, uint256, uint256, uint8, bytes32, bytes32));
         
+        require(nonce == nonces[filler]++);
         require(filler == ecrecover(_getDigest(tokenHave, tokenWant, filler, amountFillerIn, amountFillerOut, nonce), v, r, s));
 
         require(tokenHave == tokenOut && tokenWant == tokenIn);
