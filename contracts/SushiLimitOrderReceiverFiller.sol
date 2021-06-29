@@ -14,6 +14,19 @@ contract SushiSwapLimitOrderReceiver is ILimitOrderReceiver {
     using BoringERC20 for IERC20;
     using BoringMath for uint256;
 
+
+    struct Filler {
+        IERC20 tokenHave;
+        IERC20 tokenWant;
+        address filler;
+        uint256 amountFillerIn;
+        uint256 amountFillerOut;
+        uint256 nonce;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+    }
+
     string private constant EIP191_PREFIX_FOR_EIP712_STRUCTURED_DATA = "\x19\x01";
     bytes32 private constant DOMAIN_SEPARATOR_SIGNATURE_HASH = keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
     bytes32 private constant FILL_SWAP_TYPEHASH = keccak256("FillerSwap(address tokenHave,address tokenWant,address filler,uint256 amountFillerIn,uint256 amountFillerOut,uint256 nonce)");
@@ -51,27 +64,18 @@ contract SushiSwapLimitOrderReceiver is ILimitOrderReceiver {
     }
 
     function onLimitOrder(IERC20 tokenIn, IERC20 tokenOut, uint256 amountIn, uint256 amountMinOut, bytes calldata data) override external {
-        (
-            IERC20 tokenHave, 
-            IERC20 tokenWant, 
-            address filler, 
-            uint256 amountFillerIn, 
-            uint256 amountFillerOut, 
-            uint256 nonce, 
-            uint8 v, 
-            bytes32 r, 
-            bytes32 s
-
-        ) = abi.decode(data, (IERC20, IERC20, address, uint256, uint256, uint256, uint8, bytes32, bytes32));
         
-        require(nonce == nonces[filler]++);
-        require(filler == ecrecover(_getDigest(tokenHave, tokenWant, filler, amountFillerIn, amountFillerOut, nonce), v, r, s));
+        (Filler memory _filler) = abi.decode(data, (Filler));
+        
+        require(_filler.nonce == nonces[_filler.filler]++);
+        require(_filler.filler == ecrecover(_getDigest(_filler.tokenHave, _filler.tokenWant, _filler.filler, _filler.amountFillerIn, _filler.amountFillerOut, _filler.nonce), _filler.v, _filler.r, _filler.s));
 
-        require(tokenHave == tokenOut && tokenWant == tokenIn);
-        require(amountFillerOut >= amountIn);
-        require(amountFillerIn <= amountMinOut);
-        bentoBox.transfer(tokenIn, address(this), filler, bentoBox.toShare(tokenIn, amountIn, true));
-        bentoBox.transfer(tokenOut, filler, msg.sender, bentoBox.toShare(tokenOut, amountMinOut, true));
+        require(_filler.tokenHave == tokenOut && _filler.tokenWant == tokenIn);
+        require(_filler.amountFillerOut >= amountIn);
+        require(_filler.amountFillerIn <= amountMinOut);
+
+        bentoBox.transfer(tokenIn, address(this), _filler.filler, bentoBox.toShare(tokenIn, amountIn, true));
+        bentoBox.transfer(tokenOut, _filler.filler, msg.sender, bentoBox.toShare(tokenOut, amountMinOut, true));
     }
 
     function _getDigest(IERC20 tokenHave, IERC20 tokenWant, address filler, uint256 amountFillerIn, uint256 amountFillerOut, uint256 nonce) internal view returns(bytes32 digest) {
